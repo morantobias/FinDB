@@ -14,8 +14,8 @@
 import { SecEdgarClient, type ExtractedFinancial } from "../lib/sec-edgar-client"
 import { BankDB, FilingDB, FinancialDB, sql } from "../lib/database"
 import { computeAllBankRatios } from "../lib/ratio-calculator"
-import { oldToSnpCode } from "../lib/old-to-snp-bridge"
-import { getSnpMappableCodes } from "../lib/snp-template"
+import { oldToSnlCode } from "../lib/old-to-snl-bridge"
+import { getSnlMappableCodes } from "../lib/snl-template"
 
 const DRY_RUN = process.argv.includes("--dry-run")
 const SINGLE_BANK = process.argv.find(a => a.startsWith("--bank="))?.split("=")[1]
@@ -139,29 +139,28 @@ async function main() {
         results.filingsCreated++
 
         // Save standardized line items for this year — mapped to S&P CIQ codes
-        // Build S&P CIQ label lookup
-        const bsSnpLabels = new Map(getSnpMappableCodes("balance_sheet").map(c => [c.code, c.label]))
-        const isSnpLabels = new Map(getSnpMappableCodes("income_statement").map(c => [c.code, c.label]))
-        const allSnpLabels = new Map([...bsSnpLabels, ...isSnpLabels])
+        // Build SNL label lookup
+        const bsSnlLabels = new Map(getSnlMappableCodes("balance_sheet").map(c => [c.code, c.label]))
+        const isSnlLabels = new Map(getSnlMappableCodes("income_statement").map(c => [c.code, c.label]))
+        const allSnlLabels = new Map([...bsSnlLabels, ...isSnlLabels])
 
         const stdSeen = new Set<string>()
         const stdItems: any[] = []
         for (const item of yearItems) {
-          const snpCode = oldToSnpCode(item.standardized_code)
-          if (!snpCode) continue
-          const snpLabel = allSnpLabels.get(snpCode) || item.standardized_label
+          const snlCode = oldToSnlCode(item.standardized_code)
+          if (!snlCode) continue
+          const snlLabel = allSnlLabels.get(snlCode) || item.standardized_label
 
-          // Deduplicate: only keep first mapping for each snp_code per year
-          const dedupKey = `${snpCode}-${item.fiscal_year}`
+          const dedupKey = `${snlCode}-${item.fiscal_year}`
           if (stdSeen.has(dedupKey)) continue
           stdSeen.add(dedupKey)
 
           stdItems.push({
-            id: `${filingId}-snp-${snpCode}`,
+            id: `${filingId}-snl-${snlCode}`,
             bank_id: source.bank_id,
             filing_id: filingId,
-            standardized_code: snpCode,
-            standardized_label: snpLabel,
+            standardized_code: snlCode,
+            standardized_label: snlLabel,
             value: item.value,
             unit: item.unit,
             currency: "USD",
@@ -205,7 +204,7 @@ async function main() {
           reportedCount = reportedItems.length
         }
 
-        console.log(`  ✅ FY${year}: ${stdItems.length} S&P CIQ standardized, ${reportedCount} reported (ALL facts) saved`)
+        console.log(`  ✅ FY${year}: ${stdItems.length} SNL standardized, ${reportedCount} reported (ALL facts) saved`)
       }
 
       // ── Step 5: Compute ratios ───────────────────────────────────────

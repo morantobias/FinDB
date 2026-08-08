@@ -1,19 +1,19 @@
 /**
- * Seed S&P Capital IQ standard template into template_line_items table.
+ * Seed SNL Financial standard template into template_line_items table.
  */
 import { sql } from "../lib/database"
-import { SNP_INCOME_STATEMENT, SNP_BALANCE_SHEET } from "../lib/snp-template"
+import { SNL_INCOME_STATEMENT, SNL_BALANCE_SHEET } from "../lib/snl-template"
 
 async function main() {
-  console.log("🔄 Seeding S&P Capital IQ standard templates...")
+  console.log("🔄 Seeding SNL Financial standard templates...")
 
   // Clear existing
   await sql`DELETE FROM template_line_items`
   await sql`DELETE FROM standardized_templates`
 
   const templateDefs = [
-    { code: "snp_income_statement", name: "S&P Capital IQ — Income Statement", order: 1, items: SNP_INCOME_STATEMENT },
-    { code: "snp_balance_sheet", name: "S&P Capital IQ — Balance Sheet", order: 2, items: SNP_BALANCE_SHEET },
+    { code: "snl_income_statement", name: "SNL Financial — Income Statement", order: 1, items: SNL_INCOME_STATEMENT },
+    { code: "snl_balance_sheet", name: "SNL Financial — Balance Sheet", order: 2, items: SNL_BALANCE_SHEET },
   ]
 
   for (const tpl of templateDefs) {
