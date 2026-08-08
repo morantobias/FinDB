@@ -14,6 +14,8 @@
 import { SecEdgarClient, type ExtractedFinancial } from "../lib/sec-edgar-client"
 import { BankDB, FilingDB, FinancialDB, sql } from "../lib/database"
 import { computeAllBankRatios } from "../lib/ratio-calculator"
+import { oldToSnpCode } from "../lib/old-to-snp-bridge"
+import { getSnpMappableCodes } from "../lib/snp-template"
 
 const DRY_RUN = process.argv.includes("--dry-run")
 const SINGLE_BANK = process.argv.find(a => a.startsWith("--bank="))?.split("=")[1]
@@ -83,7 +85,7 @@ async function main() {
         continue
       }
 
-      console.log(`  📊 Extracted ${financials.length} mapped data points, ${allReportedFacts.length} total facts available`)
+      console.log(`  📊 Extracted ${financials.length} XBRL-mapped data points, ${allReportedFacts.length} total facts available`)
 
       // ── Step 3: Get unique fiscal years (limit to last 5) ──────────
       const years = [...new Set(financials.map(f => f.fiscal_year))].sort((a, b) => b - a).slice(0, 5)
@@ -136,21 +138,39 @@ async function main() {
         })
         results.filingsCreated++
 
-        // Save standardized line items for this year
-        const stdItems = yearItems.map((item, idx) => ({
-          id: `${filingId}-std-${idx}`,
-          bank_id: source.bank_id,
-          filing_id: filingId,
-          standardized_code: item.standardized_code,
-          standardized_label: item.standardized_label,
-          value: item.value,
-          unit: item.unit,
-          currency: "USD",
-          period_end: item.period_end,
-          fiscal_year: item.fiscal_year,
-          source_line_item_id: null,
-          confidence: item.confidence,
-        }))
+        // Save standardized line items for this year — mapped to S&P CIQ codes
+        // Build S&P CIQ label lookup
+        const bsSnpLabels = new Map(getSnpMappableCodes("balance_sheet").map(c => [c.code, c.label]))
+        const isSnpLabels = new Map(getSnpMappableCodes("income_statement").map(c => [c.code, c.label]))
+        const allSnpLabels = new Map([...bsSnpLabels, ...isSnpLabels])
+
+        const stdSeen = new Set<string>()
+        const stdItems: any[] = []
+        for (const item of yearItems) {
+          const snpCode = oldToSnpCode(item.standardized_code)
+          if (!snpCode) continue
+          const snpLabel = allSnpLabels.get(snpCode) || item.standardized_label
+
+          // Deduplicate: only keep first mapping for each snp_code per year
+          const dedupKey = `${snpCode}-${item.fiscal_year}`
+          if (stdSeen.has(dedupKey)) continue
+          stdSeen.add(dedupKey)
+
+          stdItems.push({
+            id: `${filingId}-snp-${snpCode}`,
+            bank_id: source.bank_id,
+            filing_id: filingId,
+            standardized_code: snpCode,
+            standardized_label: snpLabel,
+            value: item.value,
+            unit: item.unit,
+            currency: "USD",
+            period_end: item.period_end,
+            fiscal_year: item.fiscal_year,
+            source_line_item_id: null,
+            confidence: item.confidence,
+          })
+        }
 
         if (stdItems.length > 0) {
           await FinancialDB.upsertStandardizedLineItems(stdItems)
@@ -185,7 +205,7 @@ async function main() {
           reportedCount = reportedItems.length
         }
 
-        console.log(`  ✅ FY${year}: ${stdItems.length} standardized, ${reportedCount} reported (ALL facts) saved`)
+        console.log(`  ✅ FY${year}: ${stdItems.length} S&P CIQ standardized, ${reportedCount} reported (ALL facts) saved`)
       }
 
       // ── Step 5: Compute ratios ───────────────────────────────────────

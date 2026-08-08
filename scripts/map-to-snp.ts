@@ -96,21 +96,33 @@ async function main() {
           console.log(`    ${m.snp_code.padEnd(35)} ${m.snp_label.padEnd(40)} ${m.value.toFixed(0).padStart(8)}M  from: ${sources}`)
         }
       } else {
-        // Delete old standardized items for this bank
-        await sql`DELETE FROM standardized_line_items WHERE bank_id = ${bank.id}`
+        // Get existing S&P CIQ codes for this bank (from XBRL mapping) to avoid duplicates
+        const existingCodes = await sql`
+          SELECT DISTINCT standardized_code, fiscal_year FROM standardized_line_items WHERE bank_id = ${bank.id}
+        `
+        const existingSet = new Set(existingCodes.map((r: any) => `${r.standardized_code}|${r.fiscal_year}`))
 
-        // Get a valid filing_id for this bank (use the first filing we find)
+        // Delete any old label-mapped items (but NOT XBRL-mapped ones — those have sec- prefix in filing_id)
+        // We'll just use ON CONFLICT on ID to handle updates
+
+        // Get a valid filing_id for this bank
         const firstFiling = await sql`
           SELECT id FROM filings WHERE bank_id = ${bank.id} LIMIT 1
         `
         const defaultFilingId = firstFiling[0]?.id || "unknown"
 
-        // Save mapped items
+        // Save mapped items — skip if already populated by XBRL mapping
         let saved = 0
+        let skipped = 0
         for (const item of allMapped) {
-          // Ensure value is a valid number
           const val = Number(item.value)
           if (!isFinite(val) || val === 0) continue
+
+          const key = `${item.snp_code}|${item.fiscal_year}`
+          if (existingSet.has(key)) {
+            skipped++
+            continue
+          }
 
           const id = `snp-${bank.id}-${item.snp_code}-${item.fiscal_year}`
           try {
@@ -129,7 +141,7 @@ async function main() {
             }
           }
         }
-        console.log(`  💾 Saved ${saved} standardized items`)
+        console.log(`  💾 Saved ${saved} new standardized items (${skipped} skipped — already from XBRL)`)
       }
 
       results.banksProcessed++
