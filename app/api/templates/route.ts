@@ -9,9 +9,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") || "balance_sheet"
 
-  const templateCode = type === "income_statement" ? "IS_BANK"
+  const templateCode = type === "income_statement" ? "snp_income_statement"
     : type === "cash_flow" ? "CF_BANK"
-    : "BS_BANK"
+    : "snp_balance_sheet"
 
   try {
     const lines = await sql`

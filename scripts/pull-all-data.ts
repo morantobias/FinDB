@@ -73,19 +73,20 @@ async function main() {
         continue
       }
 
-      // ── Step 2: Extract financials ───────────────────────────────────
+      // ── Step 2: Extract financials & ALL reported facts ──────────────
       const financials = client.extractFinancials(facts)
-      if (financials.length === 0) {
+      const allReportedFacts = client.extractAllReportedFacts(facts)
+      if (financials.length === 0 && allReportedFacts.length === 0) {
         console.log(`  ⚠️  No financial data extracted`)
         results.skipped++
         await markChecked(source.id)
         continue
       }
 
-      console.log(`  📊 Extracted ${financials.length} data points`)
+      console.log(`  📊 Extracted ${financials.length} mapped data points, ${allReportedFacts.length} total facts available`)
 
-      // ── Step 3: Get unique fiscal years ──────────────────────────────
-      const years = [...new Set(financials.map(f => f.fiscal_year))].sort((a, b) => b - a)
+      // ── Step 3: Get unique fiscal years (limit to last 5) ──────────
+      const years = [...new Set(financials.map(f => f.fiscal_year))].sort((a, b) => b - a).slice(0, 5)
       console.log(`  📅 Fiscal years: ${years.join(", ")}`)
 
       if (DRY_RUN) {
@@ -156,28 +157,35 @@ async function main() {
           results.dataPoints += stdItems.length
         }
 
-        // Also save REPORTED line items (using SEC fact labels — bank-specific names)
-        const reportedItems = yearItems.map((item, idx) => ({
-          id: `${filingId}-reported-${idx}`,
-          filing_id: filingId,
-          statement_type: item.standardized_code.startsWith("BS_") ? "balance_sheet"
-            : item.standardized_code.startsWith("IS_") ? "income_statement" : "cash_flow",
-          line_item: item.reported_label || item.standardized_label,
-          value: item.value,
-          unit: item.unit,
-          currency: "USD",
-          period_end: item.period_end,
-          fiscal_year: item.fiscal_year,
-          category: item.standardized_code.startsWith("BS_") ? "balance_sheet" : "income_statement",
-          subcategory: null,
-          line_order: idx + 1,
-        }))
+        // Save reported line items — clear old, save ALL SEC facts
+        const yearReportedFacts = allReportedFacts
+          .filter(f => f.fiscal_year === year && (f.form === "10-K" || f.form === "10-K/A" || f.form === "40-F" || f.form === "20-F"))
 
-        if (reportedItems.length > 0) {
+        let reportedCount = 0
+        if (yearReportedFacts.length > 0) {
+          // Delete old reported items for this filing
+          await FinancialDB.deleteReportedLineItems(filingId)
+
+          const reportedItems = yearReportedFacts.map((fact, idx) => ({
+            id: `${filingId}-reported-${idx}`,
+            filing_id: filingId,
+            statement_type: fact.statement_type,
+            line_item: fact.label,
+            value: fact.value,
+            unit: fact.unit,
+            currency: "USD",
+            period_end: fact.period_end,
+            fiscal_year: fact.fiscal_year,
+            category: fact.statement_type,
+            subcategory: null,
+            line_order: idx + 1,
+          }))
+
           await FinancialDB.upsertReportedLineItems(reportedItems)
+          reportedCount = reportedItems.length
         }
 
-        console.log(`  ✅ FY${year}: ${stdItems.length} standardized, ${reportedItems.length} reported items saved`)
+        console.log(`  ✅ FY${year}: ${stdItems.length} standardized, ${reportedCount} reported (ALL facts) saved`)
       }
 
       // ── Step 5: Compute ratios ───────────────────────────────────────

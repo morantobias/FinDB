@@ -138,12 +138,26 @@ export const FinancialDB = {
     return sql`SELECT * FROM reported_line_items WHERE filing_id = ${filingId} ORDER BY line_order`
   },
 
+  async getReportedLineItemsByBankId(bankId: string): Promise<any[]> {
+    return sql`SELECT * FROM reported_line_items WHERE filing_id LIKE ${'sec-' + bankId + '-%'} ORDER BY fiscal_year DESC, line_order`
+  },
+
+  async deleteReportedLineItems(filingId: string): Promise<void> {
+    await sql`DELETE FROM reported_line_items WHERE filing_id = ${filingId}`
+  },
+
   async upsertReportedLineItems(items: any[]): Promise<void> {
     for (const item of items) {
       await sql`
         INSERT INTO reported_line_items (id, filing_id, statement_type, line_item, value, unit, currency, period_end, fiscal_year, category, subcategory, line_order)
         VALUES (${item.id}, ${item.filing_id}, ${item.statement_type}, ${item.line_item}, ${item.value}, ${item.unit}, ${item.currency}, ${item.period_end}, ${item.fiscal_year}, ${item.category}, ${item.subcategory}, ${item.line_order})
-        ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, category = EXCLUDED.category
+        ON CONFLICT (id) DO UPDATE SET
+          value = EXCLUDED.value,
+          category = EXCLUDED.category,
+          statement_type = EXCLUDED.statement_type,
+          line_item = EXCLUDED.line_item,
+          line_order = EXCLUDED.line_order,
+          unit = EXCLUDED.unit
       `
     }
   },

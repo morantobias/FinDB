@@ -60,6 +60,19 @@ export interface ExtractedFinancial {
   confidence: number
 }
 
+export interface ReportedFact {
+  tag: string
+  label: string
+  description: string
+  value: number
+  unit: string
+  statement_type: "balance_sheet" | "income_statement" | "cash_flow"
+  period_end: string
+  fiscal_year: number
+  form: string
+  filed_date: string
+}
+
 export class SecEdgarClient {
   private lastRequestTime = 0
   private minInterval = 150 // ms between requests (10/sec max)
@@ -121,30 +134,25 @@ export class SecEdgarClient {
   extractFinancials(facts: SecCompanyFacts): ExtractedFinancial[] {
     const results: ExtractedFinancial[] = []
 
-    // Try US GAAP first, then IFRS for Canadian cross-listed banks
     const gaapFacts = facts?.facts?.["us-gaap"]
-    const ifrsFacts = facts?.facts?.["ifrs-full"]
+    const ifrsFacts = (facts?.facts as any)?.["ifrs-full"]
 
     if (!gaapFacts && !ifrsFacts) {
       console.log(`  ⚠️  No us-gaap or ifrs-full facts found. Available keys: ${Object.keys(facts?.facts || {}).join(", ")}`)
       return []
     }
 
-    // Process US GAAP facts
     if (gaapFacts) {
       const gaapMappings = getUsGaapMappings()
       for (const [tag, mapping] of Object.entries(gaapMappings)) {
         extractFactToResults(results, gaapFacts, tag, mapping)
       }
-
-      // US GAAP ratio mappings
       const ratioMappings = getRatioXbrlMappings()
       for (const [tag, mapping] of Object.entries(ratioMappings)) {
         extractRatioFact(results, gaapFacts, tag, mapping)
       }
     }
 
-    // Process IFRS facts (Canadian cross-listed banks)
     if (ifrsFacts) {
       const ifrsMappings = getIfrsMappings()
       for (const [tag, mapping] of Object.entries(ifrsMappings)) {
@@ -152,9 +160,8 @@ export class SecEdgarClient {
       }
     }
 
-    console.log(`📊 Extracted ${results.length} financial data points from SEC XBRL`)
+    console.log(`📊 Extracted ${results.length} mapped financial data points`)
 
-    // Deduplicate: for each code+fiscal_year, keep the latest filed_date
     const deduped = new Map<string, ExtractedFinancial>()
     for (const item of results) {
       const key = `${item.standardized_code}|${item.fiscal_year}|${item.form}`
@@ -165,8 +172,172 @@ export class SecEdgarClient {
     }
 
     const final = Array.from(deduped.values())
-    console.log(`📊 After dedup: ${final.length} unique data points`)
+    console.log(`📊 After dedup: ${final.length} unique mapped data points`)
     return final
+  }
+
+  /** Extract ALL reported facts (not just mapped ones) for As Reported view */
+  extractAllReportedFacts(facts: SecCompanyFacts): ReportedFact[] {
+    const results: ReportedFact[] = []
+
+    const gaapFacts = facts?.facts?.["us-gaap"]
+    const ifrsFacts = (facts?.facts as any)?.["ifrs-full"]
+
+    // Use whichever namespace has more facts (Scotiabank: 1 us-gaap vs 258 ifrs-full)
+    const gaapSize = gaapFacts ? Object.keys(gaapFacts).length : 0
+    const ifrsSize = ifrsFacts ? Object.keys(ifrsFacts).length : 0
+    const allFacts = ifrsSize > gaapSize ? ifrsFacts : (gaapFacts || ifrsFacts || {})
+    if (Object.keys(allFacts).length === 0) {
+      console.log(`  ⚠️  No facts found for reported view`)
+      return []
+    }
+
+    for (const [tag, fact] of Object.entries(allFacts)) {
+      if (!fact?.units) continue
+
+      // Try USD first, then CAD, then any currency
+      let data = fact.units["USD"] || fact.units["CAD"]
+      if (!data) {
+        const keys = Object.keys(fact.units)
+        if (keys.length === 0) continue
+        data = fact.units[keys[0]]
+      }
+      if (!data || data.length === 0) continue
+
+      // Filter for 10-K / 40-F annual filings
+      const annual = data
+        .filter((d: any) => d.form === "10-K" || d.form === "10-K/A" || d.form === "40-F" || d.form === "20-F")
+        .sort((a: any, b: any) => b.fy - a.fy)
+
+      if (annual.length === 0) continue
+
+      // Determine statement type
+      const stmtType = this.classifyStatementType(tag, fact.label)
+
+      // Only include likely financial statement items (skip pension detail, tax reconciliation, etc.)
+      if (stmtType === "skip") continue
+
+      for (const filing of annual) {
+        const val = filing.val
+        const valInMillions = Math.abs(val) > 10_000_000 ? val / 1_000_000 : val
+        const label = fact.label || tag // fallback to tag name if no label
+
+        results.push({
+          tag,
+          label,
+          description: fact.description || "",
+          value: valInMillions,
+          unit: Math.abs(val) > 10_000_000 ? "millions" : "actual",
+          statement_type: stmtType,
+          period_end: filing.end,
+          fiscal_year: filing.fy,
+          form: filing.form,
+          filed_date: filing.filed,
+        })
+      }
+    }
+
+    // Deduplicate: keep latest filing per tag+year
+    const deduped = new Map<string, ReportedFact>()
+    for (const item of results) {
+      const key = `${item.tag}|${item.fiscal_year}`
+      const existing = deduped.get(key)
+      if (!existing || item.filed_date > existing.filed_date) {
+        deduped.set(key, item)
+      }
+    }
+
+    const final = Array.from(deduped.values())
+    console.log(`📋 All reported facts: ${final.length} items (${final.filter(f => f.statement_type === "balance_sheet").length} BS, ${final.filter(f => f.statement_type === "income_statement").length} IS, ${final.filter(f => f.statement_type === "cash_flow").length} CF)`)
+    return final
+  }
+
+  /** Classify a fact as balance_sheet, income_statement, cash_flow, or skip */
+  private classifyStatementType(tag: string, label: string): "balance_sheet" | "income_statement" | "cash_flow" | "skip" {
+    const lower = (tag + " " + label).toLowerCase()
+
+    // Cash Flow indicators (check BEFORE balance sheet to avoid misclassification)
+    const cfPatterns = [
+      "cash and cash equivalents, period increase",
+      "cash, cash equivalents, restricted cash",
+      "net cash provided", "net cash used",
+      "proceeds from", "repayments of", "payments for",
+      "cash flow", "investing activ", "financing activ",
+      "operating activ", "capital expenditure",
+      "effect of exchange rate on cash",
+      "supplemental cash flow", "cash paid for",
+      "repurchase of common stock", "repayments of debt",
+      "proceeds from issuance", "dividends paid",
+      "net change in", "cash received from",
+    ]
+    if (cfPatterns.some(p => lower.includes(p))) return "cash_flow"
+
+    // Skip: per-share metadata, non-financial items
+    const skipPatterns = [
+      "pershare", "per share", "par value", "shares authorized",
+      "shares issued", "shares outstanding", "stated value",
+      "definedbenefit", "definedcontribution", "pension", "postretirement",
+      "effectivetaxrate", "taxrate reconciliation",
+      "othercomprehensiveincome", "accumulated translation",
+      "businessacquisition", "proforma", "segment",
+      "weightedaverage", "antidilutive",
+      "dividendspershare", "commonstockdividends",
+      "sharebasedcompensation", "stockoption",
+      "restructuring", "discontinued", "extraordinary",
+      "changeinaccounting", "newaccounting",
+      "reclassification",
+      "cashflowhedge", "fairvaluehedge", "netinvestmenthedge",
+      "remeasurement", "settlement", "curtailment",
+      "subsequentevent", "commitment", "contingency",
+      "variableinterest", "consolidated", "investmentcompany",
+      "relatedparty", "concentration", "fairvalueinput",
+      "scheduleof", "maturity", "contractual",
+      // Skip shares/equity metadata
+      "common stock, shares", "preferred stock, shares",
+      "common stock, par", "preferred stock, par",
+      "treasury stock, shares", "stock repurchase program, number",
+      "common stock, capital shares reserved",
+    ]
+    if (skipPatterns.some(p => lower.includes(p))) return "skip"
+
+    // Balance Sheet indicators
+    const bsPatterns = [
+      "asset", "liabilit", "deposit", "loan", "borrowing", "debt",
+      "equity", "stockholder", "goodwill", "intangible",
+      "capital", "rwa", "risk.weighted", "allowance",
+      "reserve", "cash", "securit", "trading",
+      "property", "premises", "treasury", "retained",
+      "aoci", "common.stock", "paid.in", "tier",
+      "derivative", "receivable", "payable", "repurchase",
+      "federal.funds", "commercial.paper", "subordinated",
+      "brokerage", "servicing", "held.for.sale",
+      "accumulated.other", "hedge",
+    ]
+    if (bsPatterns.some(p => lower.includes(p))) return "balance_sheet"
+
+    // Income Statement indicators
+    const isPatterns = [
+      "income", "revenue", "expense", "earning",
+      "interest", "provision", "tax", "fee", "commission",
+      "compensation", "occupancy", "salary", "benefit",
+      "profit", "loss", "amortization", "depreciation",
+      "dividend", "gain", "write.off", "write.down",
+      "impairment", "servicing", "brokerage",
+      "investment.banking", "advisory", "underwriting",
+      "trading.revenue", "principal.transaction",
+      "card", "payment", "mortgage", "fiduciary",
+      "marketing", "professional", "technology",
+      "communication", "data.processing", "fdic",
+      "premium", "assessment", "other.operating",
+    ]
+    if (isPatterns.some(p => lower.includes(p))) return "income_statement"
+
+    // Default: balance sheet for anything that looks like a position, income for flows
+    if (lower.includes("expense") || lower.includes("revenue") || lower.includes("income") || lower.includes("earning") || lower.includes("loss")) {
+      return "income_statement"
+    }
+
+    return "balance_sheet"
   }
 
   private normalizeValue(val: number, targetUnit: string): number {

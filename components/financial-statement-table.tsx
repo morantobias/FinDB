@@ -55,7 +55,8 @@ export function FinancialStatementTable({ bankId, bankName }: StatementTableProp
   // Load data
   useEffect(() => {
     loadData()
-  }, [bankId, activeStatement])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankId, activeStatement, viewMode, periodType])
 
   // Default select latest 3 years
   useEffect(() => {
@@ -67,62 +68,57 @@ export function FinancialStatementTable({ bankId, bankName }: StatementTableProp
   async function loadData() {
     setIsLoading(true)
     try {
-      // Load template lines
-      const templateRes = await fetch(`/api/templates?type=${activeStatement}`)
-      const templateData = await templateRes.json()
-      setTemplateLines(templateData.lines || [])
+      if (viewMode === "standardized") {
+        // Load template lines
+        const templateRes = await fetch(`/api/templates?type=${activeStatement}`)
+        const templateData = await templateRes.json()
+        setTemplateLines(templateData.lines || [])
 
-      // Load ALL financial data for this bank
-      const finRes = await fetch(`/api/banks/${bankId}/financials`)
-      const finData = await finRes.json()
+        // Load ALL standardized financial data for this bank
+        const finRes = await fetch(`/api/banks/${bankId}/financials`)
+        const finData = await finRes.json()
 
-      if (finData.financials) {
-        const items = Array.isArray(finData.financials)
-          ? finData.financials
-          : Object.values(finData.financials).flat()
+        if (finData.financials) {
+          const items = Array.isArray(finData.financials)
+            ? finData.financials
+            : Object.values(finData.financials).flat()
 
-        // Build multi-period lookup
-        const dataMap: MultiPeriodData = {}
-        const allPeriodsList: PeriodDataPoint[] = []
-
-        for (const item of items) {
-          if (!item.standardized_code) continue
-          if (!dataMap[item.standardized_code]) dataMap[item.standardized_code] = []
-
-          // Filter by period type
-          const isQuarterly = item.form === "10-Q" || item.period_end?.includes("Q")
-          const isAnnual = item.form === "10-K" || !isQuarterly
-
-          if (periodType === "annual" && !isAnnual) continue
-          if (periodType === "quarterly" && !isQuarterly) continue
-          // ytd: include all
-
-          dataMap[item.standardized_code].push({
-            period_end: item.period_end,
-            fiscal_year: item.fiscal_year,
-            value: Number(item.value),
-            form: item.form,
-          })
-
-          allPeriodsList.push({
-            period_end: item.period_end,
-            fiscal_year: item.fiscal_year,
-            value: Number(item.value),
-            form: item.form,
-          })
+          buildDataMap(items, viewMode)
         }
+      } else {
+        // "As Reported" view — fetch ALL reported items for this bank
+        const repRes = await fetch(`/api/banks/${bankId}/reported?type=${activeStatement}`)
+        const repData = await repRes.json()
 
-        // Sort each code's periods by fiscal_year desc
-        for (const code of Object.keys(dataMap)) {
-          dataMap[code].sort((a, b) => b.fiscal_year - a.fiscal_year)
+        if (repData.items) {
+          // Build dynamic line list from reported items
+          const seenLabels = new Map<string, any>()
+          const lineList: any[] = []
+
+          for (const item of repData.items) {
+            const label = item.line_item
+            if (!seenLabels.has(label)) {
+              seenLabels.set(label, item)
+              lineList.push({
+                id: item.id,
+                standardized_code: label, // Use label as key
+                line_label: label,
+                line_order: item.line_order || lineList.length + 1,
+                indent_level: 0,
+                is_bold: false,
+                is_total: false,
+                is_subtotal: false,
+                category: item.category || item.statement_type,
+              })
+            }
+          }
+
+          // Sort by line_order
+          lineList.sort((a, b) => a.line_order - b.line_order)
+          setTemplateLines(lineList)
+
+          buildDataMap(repData.items, viewMode)
         }
-
-        setFinancialData(dataMap)
-        setAllPeriods(allPeriodsList)
-
-        // Get unique years
-        const years = [...new Set(allPeriodsList.map(p => p.fiscal_year))].sort((a, b) => b - a)
-        setAvailableYears(years)
       }
 
       // Load ratios
@@ -134,6 +130,51 @@ export function FinancialStatementTable({ bankId, bankName }: StatementTableProp
     } finally {
       setIsLoading(false)
     }
+  }
+
+  function buildDataMap(items: any[], vm: ViewMode) {
+    const dataMap: MultiPeriodData = {}
+    const allPeriodsList: PeriodDataPoint[] = []
+
+    for (const item of items) {
+      // Use standardized_code for standardized view, line_item for reported
+      const code = vm === "standardized" ? item.standardized_code : item.line_item
+      if (!code) continue
+      if (!dataMap[code]) dataMap[code] = []
+
+      // Filter by period type
+      const isQuarterly = item.form === "10-Q" || item.period_end?.includes("Q")
+      const isAnnual = item.form === "10-K" || !isQuarterly
+
+      if (periodType === "annual" && !isAnnual) continue
+      if (periodType === "quarterly" && !isQuarterly) continue
+
+      dataMap[code].push({
+        period_end: item.period_end,
+        fiscal_year: item.fiscal_year,
+        value: Number(item.value),
+        form: item.form,
+      })
+
+      allPeriodsList.push({
+        period_end: item.period_end,
+        fiscal_year: item.fiscal_year,
+        value: Number(item.value),
+        form: item.form,
+      })
+    }
+
+    // Sort each code's periods by fiscal_year desc
+    for (const code of Object.keys(dataMap)) {
+      dataMap[code].sort((a, b) => b.fiscal_year - a.fiscal_year)
+    }
+
+    setFinancialData(dataMap)
+    setAllPeriods(allPeriodsList)
+
+    // Get unique years
+    const years = [...new Set(allPeriodsList.map(p => p.fiscal_year))].sort((a, b) => b - a)
+    setAvailableYears(years)
   }
 
   const toggleYear = (year: number) => {
