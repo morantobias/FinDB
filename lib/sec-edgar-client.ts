@@ -118,100 +118,54 @@ export class SecEdgarClient {
 
   /** Extract standardized financial data from SEC company facts */
   extractFinancials(facts: SecCompanyFacts): ExtractedFinancial[] {
-    if (!facts?.facts?.["us-gaap"]) return []
-
     const results: ExtractedFinancial[] = []
-    const usGaapFacts = facts.facts["us-gaap"]
-    const mappings = getXbrlMappings()
 
-    for (const [tag, mapping] of Object.entries(mappings)) {
-      const fact = usGaapFacts[tag]
-      if (!fact?.units) continue
+    // Try US GAAP first, then IFRS for Canadian cross-listed banks
+    const gaapFacts = facts?.facts?.["us-gaap"]
+    const ifrsFacts = facts?.facts?.["ifrs-full"]
 
-      // Get the latest annual filing in USD
-      const usdData = fact.units["USD"]
-      if (!usdData || usdData.length === 0) continue
+    if (!gaapFacts && !ifrsFacts) {
+      console.log(`  ⚠️  No us-gaap or ifrs-full facts found. Available keys: ${Object.keys(facts?.facts || {}).join(", ")}`)
+      return []
+    }
 
-      // Filter for 10-K annual filings, sorted by fiscal year descending
-      const annualFilings = usdData
-        .filter((d: any) => d.form === "10-K" || d.form === "10-K/A")
-        .sort((a: any, b: any) => b.fy - a.fy)
-
-      // Take latest 5 years
-      for (const filing of annualFilings.slice(0, 5)) {
-        const val = filing.val
-        // Convert to millions if needed
-        const valueInMillions = this.normalizeValue(val, mapping.unit)
-
-        results.push({
-          standardized_code: mapping.code,
-          standardized_label: mapping.label,
-          value: valueInMillions,
-          unit: "millions",
-          period_end: filing.end,
-          fiscal_year: filing.fy,
-          form: filing.form,
-          filed_date: filing.filed,
-          xbrl_tag: tag,
-          confidence: 0.99, // XBRL data is structured, high confidence
-        })
+    // Process US GAAP facts
+    if (gaapFacts) {
+      const gaapMappings = getUsGaapMappings()
+      for (const [tag, mapping] of Object.entries(gaapMappings)) {
+        extractFactToResults(results, gaapFacts, tag, mapping)
       }
 
-      // Also get quarterly (10-Q) for latest 4 quarters
-      const quarterlyFilings = usdData
-        .filter((d: any) => d.form === "10-Q")
-        .sort((a: any, b: any) => new Date(b.end).getTime() - new Date(a.end).getTime())
-        .slice(0, 4)
-
-      for (const filing of quarterlyFilings) {
-        results.push({
-          standardized_code: mapping.code,
-          standardized_label: mapping.label,
-          value: this.normalizeValue(filing.val, mapping.unit),
-          unit: "millions",
-          period_end: filing.end,
-          fiscal_year: filing.fy,
-          form: filing.form,
-          filed_date: filing.filed,
-          xbrl_tag: tag,
-          confidence: 0.99,
-        })
+      // US GAAP ratio mappings
+      const ratioMappings = getRatioXbrlMappings()
+      for (const [tag, mapping] of Object.entries(ratioMappings)) {
+        extractRatioFact(results, gaapFacts, tag, mapping)
       }
     }
 
-    // Also extract ratio-type data (already in %)
-    const ratioMappings = getRatioXbrlMappings()
-    for (const [tag, mapping] of Object.entries(ratioMappings)) {
-      const fact = usGaapFacts[tag]
-      if (!fact?.units) continue
-
-      // Ratios are typically pure numbers
-      const pureData = fact.units["pure"] || fact.units["number"]
-      if (!pureData) continue
-
-      const annual = pureData
-        .filter((d: any) => d.form === "10-K")
-        .sort((a: any, b: any) => b.fy - a.fy)
-        .slice(0, 5)
-
-      for (const filing of annual) {
-        results.push({
-          standardized_code: mapping.code,
-          standardized_label: mapping.label,
-          value: filing.val * (mapping.isPercent ? 100 : 1),
-          unit: mapping.isPercent ? "%" : "ratio",
-          period_end: filing.end,
-          fiscal_year: filing.fy,
-          form: filing.form,
-          filed_date: filing.filed,
-          xbrl_tag: tag,
-          confidence: 0.99,
-        })
+    // Process IFRS facts (Canadian cross-listed banks)
+    if (ifrsFacts) {
+      const ifrsMappings = getIfrsMappings()
+      for (const [tag, mapping] of Object.entries(ifrsMappings)) {
+        extractFactToResults(results, ifrsFacts, tag, mapping)
       }
     }
 
     console.log(`📊 Extracted ${results.length} financial data points from SEC XBRL`)
-    return results
+
+    // Deduplicate: for each code+fiscal_year, keep the latest filed_date
+    const deduped = new Map<string, ExtractedFinancial>()
+    for (const item of results) {
+      const key = `${item.standardized_code}|${item.fiscal_year}|${item.form}`
+      const existing = deduped.get(key)
+      if (!existing || item.filed_date > existing.filed_date) {
+        deduped.set(key, item)
+      }
+    }
+
+    const final = Array.from(deduped.values())
+    console.log(`📊 After dedup: ${final.length} unique data points`)
+    return final
   }
 
   private normalizeValue(val: number, targetUnit: string): number {
@@ -224,7 +178,7 @@ export class SecEdgarClient {
 }
 
 /** Map US GAAP XBRL tags → FinDB standardized codes */
-function getXbrlMappings(): Record<string, { code: string; label: string; unit: string }> {
+function getUsGaapMappings(): Record<string, { code: string; label: string; unit: string }> {
   return {
     // Balance Sheet — Assets
     "Assets": { code: "BS_TOTAL_ASSETS", label: "Total Assets", unit: "millions" },
@@ -289,5 +243,133 @@ function getRatioXbrlMappings(): Record<string, { code: string; label: string; i
     "TierOneRiskBasedCapitalRatio": { code: "CAP_TIER1_RATIO", label: "Tier 1 Ratio", isPercent: false },
     "CapitalToRiskWeightedAssets": { code: "CAP_TOTAL_CAPITAL_RATIO", label: "Total Capital Ratio", isPercent: false },
     "LeverageRatio": { code: "CAP_LEVERAGE_RATIO", label: "Leverage Ratio", isPercent: false },
+  }
+}
+
+/** Map IFRS XBRL tags → FinDB standardized codes (Canadian/European banks) */
+function getIfrsMappings(): Record<string, { code: string; label: string; unit: string }> {
+  return {
+    "Assets": { code: "BS_TOTAL_ASSETS", label: "Total Assets", unit: "millions" },
+    "CashAndCashEquivalents": { code: "BS_CASH_AND_EQUIVALENTS", label: "Cash & Equivalents", unit: "millions" },
+    "LoansAndAdvancesToCustomers": { code: "BS_NET_LOANS", label: "Net Loans & Advances", unit: "millions" },
+    "DepositsFromCustomers": { code: "BS_TOTAL_DEPOSITS", label: "Total Deposits", unit: "millions" },
+    "DepositsFromBanks": { code: "BS_INTEREST_BEARING_BANK_DEPOSITS", label: "Deposits from Banks", unit: "millions" },
+    "Equity": { code: "BS_TOTAL_EQUITY", label: "Total Equity", unit: "millions" },
+    "Liabilities": { code: "BS_TOTAL_LIABILITIES", label: "Total Liabilities", unit: "millions" },
+    "Goodwill": { code: "BS_GOODWILL", label: "Goodwill", unit: "millions" },
+    "IntangibleAssetsOtherThanGoodwill": { code: "BS_INTANGIBLES", label: "Other Intangibles", unit: "millions" },
+    "Revenue": { code: "IS_TOTAL_REVENUE", label: "Total Revenue", unit: "millions" },
+    "InterestRevenueCalculated": { code: "IS_INTEREST_INCOME", label: "Interest Income", unit: "millions" },
+    "InterestExpense": { code: "IS_INTEREST_EXPENSE", label: "Interest Expense", unit: "millions" },
+    "FeeAndCommissionIncome": { code: "IS_NONINTEREST_INCOME", label: "Fee & Commission Income", unit: "millions" },
+    "ProfitLoss": { code: "IS_NET_INCOME", label: "Net Income (IFRS)", unit: "millions" },
+    "ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity": { code: "IS_NET_INCOME", label: "Net Income", unit: "millions" },
+    "BasicEarningsLossPerShare": { code: "IS_EPS", label: "EPS (Basic)", unit: "actual" },
+    "DilutedEarningsLossPerShare": { code: "IS_EPS_DILUTED", label: "EPS (Diluted)", unit: "actual" },
+    "OperatingExpense": { code: "IS_OPERATING_EXPENSE", label: "Operating Expenses", unit: "millions" },
+    "EmployeeBenefitsExpense": { code: "IS_COMPENSATION", label: "Compensation & Benefits", unit: "millions" },
+    "IncomeTaxExpenseContinuingOperations": { code: "IS_INCOME_TAX", label: "Income Tax", unit: "millions" },
+  }
+}
+
+/**
+ * Helper: Extract a financial fact from XBRL facts and push to results.
+ */
+function extractFactToResults(
+  results: ExtractedFinancial[],
+  facts: Record<string, SecFact>,
+  tag: string,
+  mapping: { code: string; label: string; unit: string },
+  _context?: string,
+) {
+  const fact = facts[tag]
+  if (!fact?.units) return
+
+  // Try USD first, then CAD
+  let data = fact.units["USD"] || fact.units["CAD"]
+  if (!data) {
+    // Try any currency
+    const keys = Object.keys(fact.units)
+    if (keys.length === 0) return
+    data = fact.units[keys[0]]
+  }
+  if (!data || data.length === 0) return
+
+  // Annual filings (10-K for US, 40-F for Canadian)
+  const annual = data
+    .filter((d: any) => d.form === "10-K" || d.form === "10-K/A" || d.form === "40-F" || d.form === "20-F")
+    .sort((a: any, b: any) => b.fy - a.fy)
+
+  for (const filing of annual) {
+    const val = filing.val
+    const valueConverted = mapping.unit === "millions" ? val / 1_000_000
+      : mapping.unit === "billions" ? val / 1_000_000_000
+      : val
+
+    results.push({
+      standardized_code: mapping.code,
+      standardized_label: mapping.label,
+      value: valueConverted,
+      unit: mapping.unit,
+      period_end: filing.end,
+      fiscal_year: filing.fy,
+      form: filing.form,
+      filed_date: filing.filed,
+      xbrl_tag: tag,
+      confidence: 0.99,
+    })
+  }
+
+  // Quarterly (10-Q / 6-K)
+  const quarterly = data
+    .filter((d: any) => d.form === "10-Q" || d.form === "6-K")
+    .sort((a: any, b: any) => new Date(b.end).getTime() - new Date(a.end).getTime())
+    .slice(0, 4)
+
+  for (const filing of quarterly) {
+    results.push({
+      standardized_code: mapping.code,
+      standardized_label: mapping.label,
+      value: mapping.unit === "millions" ? filing.val / 1_000_000 : filing.val,
+      unit: mapping.unit,
+      period_end: filing.end,
+      fiscal_year: filing.fy,
+      form: filing.form,
+      filed_date: filing.filed,
+      xbrl_tag: tag,
+      confidence: 0.99,
+    })
+  }
+}
+
+function extractRatioFact(
+  results: ExtractedFinancial[],
+  facts: Record<string, SecFact>,
+  tag: string,
+  mapping: { code: string; label: string; isPercent: boolean },
+) {
+  const fact = facts[tag]
+  if (!fact?.units) return
+
+  const pureData = fact.units["pure"] || fact.units["number"]
+  if (!pureData) return
+
+  const annual = pureData
+    .filter((d: any) => d.form === "10-K" || d.form === "10-K/A" || d.form === "40-F")
+    .sort((a: any, b: any) => b.fy - a.fy)
+
+  for (const filing of annual) {
+    results.push({
+      standardized_code: mapping.code,
+      standardized_label: mapping.label,
+      value: filing.val * (mapping.isPercent ? 100 : 1),
+      unit: mapping.isPercent ? "%" : "ratio",
+      period_end: filing.end,
+      fiscal_year: filing.fy,
+      form: filing.form,
+      filed_date: filing.filed,
+      xbrl_tag: tag,
+      confidence: 0.99,
+    })
   }
 }
