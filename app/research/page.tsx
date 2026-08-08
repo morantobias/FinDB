@@ -7,14 +7,17 @@ import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { BankComparisonChart } from "@/components/charts"
 
 export default function ResearchPage() {
   const [question, setQuestion] = useState("")
   const [response, setResponse] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [queryHistory, setQueryHistory] = useState<any[]>([])
+  const [chartData, setChartData] = useState<any[]>([])
+  const [comparisonCodes, setComparisonCodes] = useState("BS_TOTAL_ASSETS")
   const responseRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -122,25 +125,94 @@ export default function ResearchPage() {
           </Card>
         )}
 
-        {/* Response */}
+        {/* Response with Tabs */}
         {response && (
-          <Card className="bg-slate-800/30 border-slate-700/50 mb-8" ref={responseRef}>
-            <CardHeader className="border-b border-slate-700/50">
-              <CardTitle className="text-white flex items-center gap-2">
-                📊 Research Results
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                Analysis generated at {new Date().toLocaleString()}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="prose prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {response}
-                </ReactMarkdown>
-              </div>
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="analysis" className="mb-8">
+            <TabsList className="bg-slate-800/50 mb-4">
+              <TabsTrigger value="analysis" className="data-[state=active]:bg-slate-700">📊 Analysis</TabsTrigger>
+              <TabsTrigger value="charts" className="data-[state=active]:bg-slate-700">📈 Comparison Charts</TabsTrigger>
+            </TabsList>
+            <TabsContent value="analysis">
+              <Card className="bg-slate-800/30 border-slate-700/50" ref={responseRef}>
+                <CardHeader className="border-b border-slate-700/50 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white">Research Results</CardTitle>
+                    <CardDescription className="text-slate-400">
+                      Generated at {new Date().toLocaleString()}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-600"
+                    onClick={() => {
+                      const blob = new Blob([`# FinDB Research Report\n\n**Question:** ${question}\n\n**Generated:** ${new Date().toLocaleString()}\n\n---\n\n${response}`], { type: "text/markdown" })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement("a")
+                      a.href = url; a.download = `findb-report-${Date.now()}.md`; a.click()
+                    }}
+                  >
+                    ⬇️ Download Report
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="prose prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {response}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="charts">
+              <Card className="bg-slate-800/30 border-slate-700/50">
+                <CardHeader>
+                  <CardTitle className="text-white">Bank Comparison Charts</CardTitle>
+                  <CardDescription className="text-slate-400">
+                    Select standardized codes to compare across banks
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="flex gap-3 mb-4">
+                    <select
+                      value={comparisonCodes}
+                      onChange={(e) => setComparisonCodes(e.target.value)}
+                      className="rounded-md bg-slate-700 border border-slate-600 text-white text-sm px-3 py-2"
+                    >
+                      <option value="BS_TOTAL_ASSETS">Total Assets</option>
+                      <option value="IS_NET_INCOME">Net Income</option>
+                      <option value="BS_TOTAL_EQUITY">Total Equity</option>
+                      <option value="BS_TOTAL_DEPOSITS">Total Deposits</option>
+                      <option value="BS_NET_LOANS">Net Loans</option>
+                      <option value="IS_NET_INTEREST_INCOME">Net Interest Income</option>
+                      <option value="IS_TOTAL_REVENUE">Total Revenue</option>
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-slate-600"
+                      onClick={async () => {
+                        const res = await fetch(`/api/compare?codes=${comparisonCodes}`)
+                        const data = await res.json()
+                        if (data.results) {
+                          setChartData(data.results.map((r: any) => ({
+                            name: `${r.ticker || r.bank_name}`,
+                            bank_name: r.bank_name,
+                            value: Number(r.value) / 1e9, // Convert to billions
+                          })).sort((a: any, b: any) => b.value - a.value).slice(0, 15))
+                        }
+                      }}
+                    >
+                      Compare →
+                    </Button>
+                  </div>
+                  {chartData.length > 0 && (
+                    <BankComparisonChart data={chartData} />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         )}
 
         {/* History */}
