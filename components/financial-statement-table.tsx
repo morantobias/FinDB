@@ -148,9 +148,9 @@ export function FinancialStatementTable({ bankId, bankName }: StatementTableProp
   const selectAllYears = () => setSelectedYears(new Set(availableYears))
   const deselectAllYears = () => setSelectedYears(new Set())
 
-  // Columns to display (sorted fiscal_year desc)
+  // Columns to display (sorted ascending: oldest left, newest right)
   const displayYears = useMemo(() =>
-    availableYears.filter(y => selectedYears.has(y)).sort((a, b) => b - a),
+    availableYears.filter(y => selectedYears.has(y)).sort((a, b) => a - b),
     [availableYears, selectedYears])
 
   const formatValue = (val: number): string => {

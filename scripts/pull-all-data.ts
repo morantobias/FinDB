@@ -156,7 +156,28 @@ async function main() {
           results.dataPoints += stdItems.length
         }
 
-        console.log(`  ✅ FY${year}: ${stdItems.length} standardized items saved`)
+        // Also save REPORTED line items (as the bank originally reported them)
+        const reportedItems = yearItems.map((item, idx) => ({
+          id: `${filingId}-reported-${idx}`,
+          filing_id: filingId,
+          statement_type: item.standardized_code.startsWith("BS_") ? "balance_sheet"
+            : item.standardized_code.startsWith("IS_") ? "income_statement" : "cash_flow",
+          line_item: `${item.xbrl_tag} — ${item.standardized_label}`,
+          value: item.value,
+          unit: item.unit,
+          currency: "USD",
+          period_end: item.period_end,
+          fiscal_year: item.fiscal_year,
+          category: item.standardized_code.startsWith("BS_") ? "balance_sheet" : "income_statement",
+          subcategory: null,
+          line_order: idx + 1,
+        }))
+
+        if (reportedItems.length > 0) {
+          await FinancialDB.upsertReportedLineItems(reportedItems)
+        }
+
+        console.log(`  ✅ FY${year}: ${stdItems.length} standardized, ${reportedItems.length} reported items saved`)
       }
 
       // ── Step 5: Compute ratios ───────────────────────────────────────

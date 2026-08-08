@@ -180,43 +180,55 @@ export class SecEdgarClient {
 /** Map US GAAP XBRL tags → FinDB standardized codes */
 function getUsGaapMappings(): Record<string, { code: string; label: string; unit: string }> {
   return {
-    // Balance Sheet — Assets
+    // Balance Sheet — Assets (expanded)
     "Assets": { code: "BS_TOTAL_ASSETS", label: "Total Assets", unit: "millions" },
     "CashAndCashEquivalentsAtCarryingValue": { code: "BS_CASH_AND_EQUIVALENTS", label: "Cash & Equivalents", unit: "millions" },
-    "AvailableForSaleSecuritiesDebtSecurities": { code: "BS_INVESTMENT_SECURITIES", label: "Investment Securities", unit: "millions" },
+    "CashAndDueFromBanks": { code: "BS_CASH_DUE_FROM_BANKS", label: "Cash & Due from Banks", unit: "millions" },
+    "InterestBearingDepositsInBanks": { code: "BS_INTEREST_BEARING_BANK_DEPOSITS", label: "Interest-Bearing Deposits with Banks", unit: "millions" },
+    "AvailableForSaleSecuritiesDebtSecurities": { code: "BS_INVESTMENT_SECURITIES_AFS", label: "AFS Securities", unit: "millions" },
     "HeldToMaturitySecurities": { code: "BS_HELD_TO_MATURITY", label: "HTM Securities", unit: "millions" },
+    "AvailableForSaleSecuritiesDebtSecuritiesCurrent": { code: "BS_INVESTMENT_SECURITIES", label: "Investment Securities", unit: "millions" },
+    "TradingAssets": { code: "BS_TRADING_ASSETS", label: "Trading Assets", unit: "millions" },
     "LoansAndLeasesReceivableNetReportedAmount": { code: "BS_NET_LOANS", label: "Net Loans & Leases", unit: "millions" },
     "LoansAndLeasesReceivableGrossCarryingAmount": { code: "BS_GROSS_LOANS", label: "Gross Loans", unit: "millions" },
     "FinancingReceivableAllowanceForCreditLosses": { code: "BS_LOAN_LOSS_RESERVE", label: "Allowance for Credit Losses", unit: "millions" },
     "Goodwill": { code: "BS_GOODWILL", label: "Goodwill", unit: "millions" },
     "IntangibleAssetsNetExcludingGoodwill": { code: "BS_INTANGIBLES", label: "Other Intangibles", unit: "millions" },
-    "TradingAssets": { code: "BS_TRADING_ASSETS", label: "Trading Assets", unit: "millions" },
     "OtherAssets": { code: "BS_OTHER_ASSETS", label: "Other Assets", unit: "millions" },
+    "PropertyPlantAndEquipmentNet": { code: "BS_PREMISES_EQUIPMENT", label: "Premises & Equipment", unit: "millions" },
 
-    // Balance Sheet — Liabilities
+    // Balance Sheet — Liabilities (expanded)
     "Deposits": { code: "BS_TOTAL_DEPOSITS", label: "Total Deposits", unit: "millions" },
     "DepositsNoninterestBearing": { code: "BS_DEMAND_DEPOSITS", label: "Non-Interest Bearing Deposits", unit: "millions" },
     "InterestBearingDepositLiabilities": { code: "BS_INTEREST_BEARING_DEPOSITS", label: "Interest-Bearing Deposits", unit: "millions" },
+    "TimeDeposits": { code: "BS_TIME_DEPOSITS", label: "Time Deposits", unit: "millions" },
     "Liabilities": { code: "BS_TOTAL_LIABILITIES", label: "Total Liabilities", unit: "millions" },
     "ShortTermBorrowings": { code: "BS_SHORT_TERM_BORROWINGS", label: "Short-Term Borrowings", unit: "millions" },
     "LongTermDebt": { code: "BS_LONG_TERM_DEBT", label: "Long-Term Debt", unit: "millions" },
+    "LongTermFederalHomeLoanBankAdvances": { code: "BS_LONG_TERM_DEBT", label: "Long-Term Debt", unit: "millions" },
     "TradingLiabilities": { code: "BS_TRADING_LIABILITIES", label: "Trading Liabilities", unit: "millions" },
     "OtherLiabilities": { code: "BS_OTHER_LIABILITIES", label: "Other Liabilities", unit: "millions" },
+    "AccountsPayableAndAccruedLiabilities": { code: "BS_OTHER_LIABILITIES", label: "Other Liabilities", unit: "millions" },
 
-    // Balance Sheet — Equity
+    // Balance Sheet — Equity (expanded)
     "StockholdersEquity": { code: "BS_TOTAL_EQUITY", label: "Total Shareholders' Equity", unit: "millions" },
     "CommonStockValue": { code: "BS_COMMON_STOCK", label: "Common Stock", unit: "millions" },
+    "AdditionalPaidInCapital": { code: "BS_ADDITIONAL_PAID_IN", label: "Additional Paid-In Capital", unit: "millions" },
     "RetainedEarningsAccumulatedDeficit": { code: "BS_RETAINED_EARNINGS", label: "Retained Earnings", unit: "millions" },
     "AccumulatedOtherComprehensiveIncomeLossNetOfTax": { code: "BS_AOCI", label: "AOCI", unit: "millions" },
     "TreasuryStockValue": { code: "BS_TREASURY_STOCK", label: "Treasury Stock", unit: "millions" },
 
-    // Income Statement
+    // Income Statement (expanded)
     "InterestIncomeExpenseNet": { code: "IS_NET_INTEREST_INCOME", label: "Net Interest Income", unit: "millions" },
-    "InterestIncome": { code: "IS_INTEREST_INCOME", label: "Interest Income", unit: "millions" },
-    "InterestExpense": { code: "IS_INTEREST_EXPENSE", label: "Interest Expense", unit: "millions" },
-    "NoninterestIncome": { code: "IS_NONINTEREST_INCOME", label: "Non-Interest Income", unit: "millions" },
+    "InterestIncome": { code: "IS_INTEREST_INCOME", label: "Total Interest Income", unit: "millions" },
+    "InterestExpense": { code: "IS_INTEREST_EXPENSE", label: "Total Interest Expense", unit: "millions" },
+    "InterestIncomeLoansAndLeases": { code: "IS_INTEREST_LOANS", label: "Interest on Loans", unit: "millions" },
+    "InterestIncomeSecurities": { code: "IS_INTEREST_SECURITIES", label: "Interest on Securities", unit: "millions" },
+    "InterestExpenseDeposits": { code: "IS_INTEREST_DEPOSITS", label: "Interest on Deposits", unit: "millions" },
+    "InterestExpenseBorrowings": { code: "IS_INTEREST_BORROWINGS", label: "Interest on Borrowings", unit: "millions" },
+    "NoninterestIncome": { code: "IS_NONINTEREST_INCOME", label: "Total Non-Interest Income", unit: "millions" },
     "Revenues": { code: "IS_TOTAL_REVENUE", label: "Total Revenue", unit: "millions" },
-    "OperatingExpenses": { code: "IS_OPERATING_EXPENSE", label: "Operating Expenses", unit: "millions" },
+    "OperatingExpenses": { code: "IS_OPERATING_EXPENSE", label: "Total Operating Expenses", unit: "millions" },
     "ProvisionForLoanLeaseAndOtherLosses": { code: "IS_PROVISION_EXPENSE", label: "Provision for Credit Losses", unit: "millions" },
     "NetIncomeLoss": { code: "IS_NET_INCOME", label: "Net Income", unit: "millions" },
     "EarningsPerShareBasic": { code: "IS_EPS", label: "Earnings Per Share (Basic)", unit: "actual" },
@@ -224,15 +236,16 @@ function getUsGaapMappings(): Record<string, { code: string; label: string; unit
     "IncomeTaxExpenseBenefit": { code: "IS_INCOME_TAX", label: "Income Tax Provision", unit: "millions" },
     "OperatingIncomeLoss": { code: "IS_PRE_PROVISION_PROFIT", label: "Pre-Provision Operating Income", unit: "millions" },
     "CommonStockDividendsPerShareDeclared": { code: "IS_DPS", label: "Dividends Per Share", unit: "actual" },
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest": { code: "IS_INCOME_BEFORE_TAX", label: "Income Before Taxes", unit: "millions" },
+    "LaborAndRelatedExpense": { code: "IS_COMPENSATION", label: "Compensation & Benefits", unit: "millions" },
+    "OccupancyNet": { code: "IS_OCCUPANCY", label: "Occupancy & Equipment", unit: "millions" },
 
-    // Capital
+    // Capital (expanded)
     "RiskWeightedAssets": { code: "CAP_RWA_TOTAL", label: "Risk-Weighted Assets", unit: "millions" },
     "CommonEquityTierOneCapital": { code: "BS_CET1_CAPITAL", label: "CET1 Capital", unit: "millions" },
     "TierOneCapital": { code: "BS_TIER_1_CAPITAL", label: "Tier 1 Capital", unit: "millions" },
-
-    // Liquidity
-    "CashAndDueFromBanks": { code: "BS_CASH_DUE_FROM_BANKS", label: "Cash & Due from Banks", unit: "millions" },
-    "InterestBearingDepositsInBanks": { code: "BS_INTEREST_BEARING_BANK_DEPOSITS", label: "Interest-Bearing Deposits with Banks", unit: "millions" },
+    "TierTwoCapital": { code: "BS_TIER_2_CAPITAL", label: "Tier 2 Capital", unit: "millions" },
+    "Capital": { code: "BS_TOTAL_CAPITAL", label: "Total Regulatory Capital", unit: "millions" },
   }
 }
 
