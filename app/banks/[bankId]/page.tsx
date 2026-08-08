@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { FileUpload } from "@/components/file-upload"
 import { REGION_LABELS, type BankRegion, type Bank, type BankFiling } from "@/types/bank"
 import { STANDARDIZED_CODES, type KeyRatio } from "@/types/financial"
 
@@ -117,9 +118,21 @@ export default function BankDetailPage() {
 
           {/* Filings Tab */}
           <TabsContent value="filings">
+            <div className="mb-6">
+              <FileUpload bankId={bankId} bankName={bank.name} onUploadComplete={() => {
+                // Refresh data after upload
+                fetch(`/api/banks/${bankId}`)
+                  .then(r => r.json())
+                  .then(data => {
+                    setFilings(data.filings || [])
+                    setRatios(data.ratios || [])
+                    setStandardizedFinancials(data.standardizedFinancials || [])
+                  })
+              }} />
+            </div>
             {filings.length === 0 ? (
-              <div className="text-center py-20 text-slate-400">
-                No filings available yet. Upload financial reports to get started.
+              <div className="text-center py-10 text-slate-400">
+                No filings yet. Upload your first financial report above.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
