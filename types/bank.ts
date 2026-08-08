@@ -4,6 +4,7 @@
 
 export interface Bank {
   id: string
+  bank_code: string | null  // e.g. "NA01", "EU03", "AS07" — structured alphanumeric ID
   name: string
   ticker?: string
   country: string

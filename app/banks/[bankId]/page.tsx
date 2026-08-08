@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileUpload } from "@/components/file-upload"
 import { REGION_LABELS, type BankRegion, type Bank, type BankFiling } from "@/types/bank"
 import { STANDARDIZED_CODES, type KeyRatio } from "@/types/financial"
+import { FinancialStatementTable } from "@/components/financial-statement-table"
 
 export default function BankDetailPage() {
   const params = useParams()
@@ -78,6 +79,9 @@ export default function BankDetailPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-3 mb-2">
+                  {bank.bank_code && (
+                    <Badge className="bg-blue-600 text-white font-mono text-sm px-3 py-0.5">{bank.bank_code}</Badge>
+                  )}
                   <h1 className="text-3xl font-black text-white">{bank.name}</h1>
                   <Badge>{REGION_LABELS[bank.region as BankRegion]}</Badge>
                 </div>
@@ -113,7 +117,7 @@ export default function BankDetailPage() {
           <TabsList className="bg-slate-800/50 mb-6">
             <TabsTrigger value="filings" className="data-[state=active]:bg-slate-700">Filings ({filings.length})</TabsTrigger>
             <TabsTrigger value="ratios" className="data-[state=active]:bg-slate-700">Key Ratios</TabsTrigger>
-            <TabsTrigger value="financials" className="data-[state=active]:bg-slate-700">Standardized Financials</TabsTrigger>
+            <TabsTrigger value="financials" className="data-[state=active]:bg-slate-700">Financials</TabsTrigger>
           </TabsList>
 
           {/* Filings Tab */}
@@ -191,48 +195,9 @@ export default function BankDetailPage() {
             )}
           </TabsContent>
 
-          {/* Standardized Financials Tab */}
+          {/* Financial Statements Tab */}
           <TabsContent value="financials">
-            {standardizedFinancials.length === 0 ? (
-              <div className="text-center py-20 text-slate-400">
-                Standardized financial data not yet extracted. Upload and process filings to populate.
-              </div>
-            ) : (
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-4">
-                  {(["balance_sheet", "income_statement", "cash_flow"] as const).map(stmtType => {
-                    const items = standardizedFinancials.filter((i: any) => {
-                      const code = i.standardized_code
-                      if (stmtType === "balance_sheet") return code.startsWith("BS_")
-                      if (stmtType === "income_statement") return code.startsWith("IS_")
-                      return code.startsWith("CF_")
-                    })
-                    if (items.length === 0) return null
-                    return (
-                      <Card key={stmtType} className="bg-slate-800/30 border-slate-700/50">
-                        <CardHeader>
-                          <CardTitle className="text-lg text-white capitalize">
-                            {stmtType.replace(/_/g, " ")} ({latestPeriod})
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {items.map((item: any) => (
-                              <div key={item.id} className="flex justify-between py-1 border-b border-slate-700/30">
-                                <span className="text-sm text-slate-400">{item.standardized_label}</span>
-                                <span className="text-sm font-semibold text-white">
-                                  {item.value.toLocaleString()} {item.unit}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
-              </ScrollArea>
-            )}
+            <FinancialStatementTable bankId={bankId} bankName={bank.name} />
           </TabsContent>
         </Tabs>
       </div>

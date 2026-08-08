@@ -9,6 +9,7 @@ import { REGION_LABELS, type BankRegion } from "@/types/bank"
 
 interface BankSummary {
   id: string
+  bank_code: string | null
   name: string
   ticker: string | null
   country: string
@@ -131,6 +132,7 @@ export default function HomePage() {
                         <div className="flex items-start justify-between">
                           <div>
                             <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors">
+                              {bank.bank_code && <span className="text-blue-400 font-mono text-xs mr-1.5">{bank.bank_code}</span>}
                               {bank.name}
                             </h3>
                             <p className="text-sm text-slate-400 mt-0.5">

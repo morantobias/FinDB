@@ -93,8 +93,9 @@ export default function BanksPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg text-white group-hover:text-blue-400 transition-colors">
-                        {bank.name}
-                      </CardTitle>
+                      {bank.bank_code && <span className="text-blue-400 font-mono text-xs mr-1.5">{bank.bank_code}</span>}
+                      {bank.name}
+                    </CardTitle>
                       <p className="text-sm text-slate-400 mt-1">
                         {bank.ticker ? `${bank.ticker} • ` : ""}{bank.country}
                       </p>

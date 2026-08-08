@@ -30,6 +30,7 @@ export { sql }
 
 export interface BankRecord {
   id: string
+  bank_code: string | null
   name: string
   ticker: string | null
   country: string
@@ -68,10 +69,10 @@ export const BankDB = {
 
   async create(bank: Omit<BankRecord, "created_at" | "updated_at">): Promise<BankRecord> {
     const rows = await sql`
-      INSERT INTO banks (id, name, ticker, country, region, headquarters, description, website, logo_url, total_assets, total_assets_currency, total_assets_date, employee_count, founded_year, regulatory_body)
-      VALUES (${bank.id}, ${bank.name}, ${bank.ticker}, ${bank.country}, ${bank.region}, ${bank.headquarters}, ${bank.description}, ${bank.website}, ${bank.logo_url}, ${bank.total_assets}, ${bank.total_assets_currency}, ${bank.total_assets_date}, ${bank.employee_count}, ${bank.founded_year}, ${bank.regulatory_body})
+      INSERT INTO banks (id, bank_code, name, ticker, country, region, headquarters, description, website, logo_url, total_assets, total_assets_currency, total_assets_date, employee_count, founded_year, regulatory_body)
+      VALUES (${bank.id}, ${bank.bank_code}, ${bank.name}, ${bank.ticker}, ${bank.country}, ${bank.region}, ${bank.headquarters}, ${bank.description}, ${bank.website}, ${bank.logo_url}, ${bank.total_assets}, ${bank.total_assets_currency}, ${bank.total_assets_date}, ${bank.employee_count}, ${bank.founded_year}, ${bank.regulatory_body})
       ON CONFLICT (id) DO UPDATE SET
-        name = EXCLUDED.name, ticker = EXCLUDED.ticker, country = EXCLUDED.country,
+        bank_code = EXCLUDED.bank_code, name = EXCLUDED.name, ticker = EXCLUDED.ticker, country = EXCLUDED.country,
         region = EXCLUDED.region, total_assets = EXCLUDED.total_assets,
         updated_at = NOW()
       RETURNING *
