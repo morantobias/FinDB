@@ -156,13 +156,13 @@ async function main() {
           results.dataPoints += stdItems.length
         }
 
-        // Also save REPORTED line items (as the bank originally reported them)
+        // Also save REPORTED line items (using SEC fact labels — bank-specific names)
         const reportedItems = yearItems.map((item, idx) => ({
           id: `${filingId}-reported-${idx}`,
           filing_id: filingId,
           statement_type: item.standardized_code.startsWith("BS_") ? "balance_sheet"
             : item.standardized_code.startsWith("IS_") ? "income_statement" : "cash_flow",
-          line_item: `${item.xbrl_tag} — ${item.standardized_label}`,
+          line_item: item.reported_label || item.standardized_label,
           value: item.value,
           unit: item.unit,
           currency: "USD",

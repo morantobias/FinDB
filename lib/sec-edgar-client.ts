@@ -49,6 +49,7 @@ export interface SecFiling {
 export interface ExtractedFinancial {
   standardized_code: string
   standardized_label: string
+  reported_label: string  // SEC fact label — the GAAP-standard name close to as-reported
   value: number
   unit: string
   period_end: string
@@ -322,6 +323,7 @@ function extractFactToResults(
     results.push({
       standardized_code: mapping.code,
       standardized_label: mapping.label,
+      reported_label: fact.label,
       value: valueConverted,
       unit: mapping.unit,
       period_end: filing.end,
@@ -343,6 +345,7 @@ function extractFactToResults(
     results.push({
       standardized_code: mapping.code,
       standardized_label: mapping.label,
+      reported_label: fact.label,
       value: mapping.unit === "millions" ? filing.val / 1_000_000 : filing.val,
       unit: mapping.unit,
       period_end: filing.end,
@@ -375,6 +378,7 @@ function extractRatioFact(
     results.push({
       standardized_code: mapping.code,
       standardized_label: mapping.label,
+      reported_label: fact.label,
       value: filing.val * (mapping.isPercent ? 100 : 1),
       unit: mapping.isPercent ? "%" : "ratio",
       period_end: filing.end,
